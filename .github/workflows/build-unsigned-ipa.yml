@@ -1,0 +1,41 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Build unsigned app
+        run: |
+          set -o pipefail
+          xcodebuild -project SwiftBook/SwiftBook.xcodeproj -scheme SwiftBook -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/SwiftBookDerivedData" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tee "$RUNNER_TEMP/xcodebuild.log"
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$RUNNER_TEMP/SwiftBookDerivedData/Build/Products/Release-iphoneos/SwiftBook.app"
+          test -d "$APP_PATH"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/SwiftBook.app"
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/ipa/Payload" "$RUNNER_TEMP/SwiftBook-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SwiftBook-unsigned-IPA
+          path: ${{ runner.temp }}/SwiftBook-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SwiftBook-build-log
+          path: ${{ runner.temp }}/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 7
